@@ -1,4 +1,8 @@
+#ifdef _WIN32
+#define gml extern "C" __declspec(dllexport) double
+#else
 #define gml extern "C" double
+#endif
 #define _CRT_SECURE_NO_WARNINGS
 
 extern "C" double RegisterCallbacks(
