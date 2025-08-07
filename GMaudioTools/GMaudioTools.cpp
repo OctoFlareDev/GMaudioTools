@@ -1,4 +1,5 @@
 #define gml extern "C" double
+#define _CRT_SECURE_NO_WARNINGS
 
 extern "C" double RegisterCallbacks(
     void* async_fn,
