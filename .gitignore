@@ -1,0 +1,8 @@
+.vs/
+x64/
+GMaudioTools/x64/
+extern/bin/
+extern/doc/
+extern/include/
+extern/lib/
+extern/LICENSE.txt
