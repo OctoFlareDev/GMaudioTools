@@ -1,23 +1,11 @@
-//
-//  GMaudioTools.cpp
-//  GMaudioTools
-//
-//  Created by Flare ​ on 8/7/25.
-//
+#define gml extern "C" double
 
-#include <iostream>
-#include "GMaudioTools.hpp"
-#include "GMaudioToolsPriv.hpp"
-
-void GMaudioTools::HelloWorld(const char * s)
-{
-    GMaudioToolsPriv *theObj = new GMaudioToolsPriv;
-    theObj->HelloWorldPriv(s);
-    delete theObj;
-};
-
-void GMaudioToolsPriv::HelloWorldPriv(const char * s) 
-{
-    std::cout << s << std::endl;
-};
-
+extern "C" double RegisterCallbacks(
+    void* async_fn,
+    void* ds_map_create,
+    void* ds_map_add_double,
+    void* ds_map_add_string
+) {
+    // store these pointers for your cross-platform code…
+    return 0;
+}
