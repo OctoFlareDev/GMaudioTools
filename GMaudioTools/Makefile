@@ -13,7 +13,7 @@ CC  ?= gcc
 CXX ?= g++
 
 CFLAGS   := -O2 -fPIC
-CXXFLAGS := -O2 -fPIC -fvisibility=hidden
+CXXFLAGS := -O2 -fPIC
 LDFLAGS  := -shared
 
 TARGET := lib$(NAME).so
