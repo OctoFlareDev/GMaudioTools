@@ -19,8 +19,119 @@ extern "C" double RegisterCallbacks(
 #include "stb_vorbis.c"
 #undef STB_VORBIS_HEADER_ONLY
 
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+// GameMaker passes extension strings as UTF-8. Windows file APIs use UTF-16
+// for paths that must work independently of the active ANSI code page.
+static FILE* fopen_utf8(const char* filename, const wchar_t* mode) {
+    if (!filename || !mode) return NULL;
+
+    int wide_length = MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        filename,
+        -1,
+        NULL,
+        0
+    );
+    if (wide_length <= 0) return NULL;
+
+    wchar_t* wide_filename = (wchar_t*)malloc((size_t)wide_length * sizeof(wchar_t));
+    if (!wide_filename) return NULL;
+
+    if (MultiByteToWideChar(
+            CP_UTF8,
+            MB_ERR_INVALID_CHARS,
+            filename,
+            -1,
+            wide_filename,
+            wide_length
+        ) != wide_length) {
+        free(wide_filename);
+        return NULL;
+    }
+
+    FILE* file = NULL;
+    errno_t open_error = _wfopen_s(&file, wide_filename, mode);
+    free(wide_filename);
+    return open_error == 0 ? file : NULL;
+}
+
+static int decode_vorbis_file(
+    FILE* file,
+    int* channels,
+    int* sample_rate,
+    short** output
+) {
+    int decoder_error = 0;
+    stb_vorbis* decoder = stb_vorbis_open_file(file, 1, &decoder_error, NULL);
+    if (!decoder) return -1;
+
+    stb_vorbis_info info = stb_vorbis_get_info(decoder);
+    if (info.channels <= 0 || info.channels > INT_MAX / 4096) {
+        stb_vorbis_close(decoder);
+        return -1;
+    }
+
+    int chunk_size = info.channels * 4096;
+    int capacity = chunk_size;
+    int sample_count = 0;
+    int sample_offset = 0;
+    short* data = (short*)malloc((size_t)capacity * sizeof(short));
+    if (!data) {
+        stb_vorbis_close(decoder);
+        return -2;
+    }
+
+    for (;;) {
+        int decoded = stb_vorbis_get_samples_short_interleaved(
+            decoder,
+            info.channels,
+            data + sample_offset,
+            capacity - sample_offset
+        );
+        if (decoded == 0) break;
+
+        sample_count += decoded;
+        sample_offset += decoded * info.channels;
+
+        if (capacity - sample_offset < chunk_size) {
+            if (capacity > INT_MAX / 2) {
+                free(data);
+                stb_vorbis_close(decoder);
+                return -2;
+            }
+
+            int new_capacity = capacity * 2;
+            short* expanded = (short*)realloc(
+                data,
+                (size_t)new_capacity * sizeof(short)
+            );
+            if (!expanded) {
+                free(data);
+                stb_vorbis_close(decoder);
+                return -2;
+            }
+
+            data = expanded;
+            capacity = new_capacity;
+        }
+    }
+
+    *channels = info.channels;
+    if (sample_rate) *sample_rate = (int)info.sample_rate;
+    *output = data;
+    stb_vorbis_close(decoder);
+    return sample_count;
+}
+#endif
 
 /**
  * Decode & resample an Ogg/Vorbis file into 16-bit interleaved stereo PCM @ 44100 Hz.
@@ -34,12 +145,23 @@ short* decode_ogg_44100_stereo(const char* filename, int* out_samples_per_chan) 
     short* src_pcm = NULL;
 
     // NOTE: we capture the returned samples_per_channel,
+#ifdef _WIN32
+    FILE* source = fopen_utf8(filename, L"rb");
+    if (!source) return NULL;
+    int src_samps_per_chan = decode_vorbis_file(
+        source,
+        &src_chan,
+        &src_rate,
+        &src_pcm
+    );
+#else
     int src_samps_per_chan = stb_vorbis_decode_filename(
         filename,
         &src_chan,          // int*
         &src_rate,          // int*
         &src_pcm            // short**  <-- malloc’d by stb_vorbis
     );
+#endif
     if (src_samps_per_chan <= 0 || !src_pcm) {
         // decode error
         free(src_pcm);
@@ -134,7 +256,11 @@ gml audio_file_decode_ogg(const char* filename, const char* dest) {
     if (!pcm) {
         return -1;  // decode failed
     }
+#ifdef _WIN32
+    FILE* f = fopen_utf8(dest, L"wb");
+#else
     FILE* f = fopen(dest, "wb");
+#endif
     if (!f) {
         free(pcm);
         return -2;  // file open error
